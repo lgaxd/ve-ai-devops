@@ -1,0 +1,189 @@
+# =============================================================================
+# Vê AI · API Java · configuração comum a todos os perfis
+# Perfis: local (SQL Server 2022 no docker-compose) · azure (Azure SQL, App Service) · test (Testcontainers)
+# Segredos SEMPRE por variável de ambiente ou pelo arquivo .env (ver .env.example).
+# =============================================================================
+spring:
+  application:
+    name: ve-ai-api-java
+  config:
+    # Lê o .env da raiz do projeto (se existir). Variáveis de ambiente reais têm prioridade.
+    import: optional:file:.env[.properties]
+  profiles:
+    # SPRING_PROFILES_ACTIVE pode vir do ambiente ou do .env; sem nada, sobe o perfil local
+    active: ${SPRING_PROFILES_ACTIVE:local}
+    group:
+      local: sqlserver
+      azure: sqlserver
+      test: sqlserver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Chaves de mapa com "_" vão entre colchetes para o Spring não alterar o nome
+        "[jdbc.time_zone]": UTC
+
+  flyway:
+    enabled: true
+    # db/migration/{vendor} = oracle ou sqlserver; o seed de demo entra nos perfis que o pedem
+    locations: classpath:db/migration/{vendor}
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+  rabbitmq:
+    # CloudAMQP fornece uma URL amqps://usuario:senha@host/vhost
+    addresses: ${RABBITMQ_URL:amqp://veai:veai@localhost:5672}
+    listener:
+      simple:
+        acknowledge-mode: manual
+        # mensagem que nem chega ao listener (JSON inválido) vai para a DLQ, sem loop
+        default-requeue-rejected: false
+        prefetch: 10
+    template:
+      retry:
+        enabled: true
+        max-retries: 3
+
+  ai:
+    model:
+      # Só liga o modelo de chat da OpenAI quando veai.ia.provedor = openai
+      chat: ${veai.ia.provedor}
+      embedding: none
+      image: none
+      audio.speech: none
+      audio.transcription: none
+      moderation: none
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        model: ${veai.ia.modelo}
+        # Vazio = não envia temperature. Os modelos de raciocínio (GPT-5 em diante, como o
+        # gpt-6-luna) recusam qualquer valor diferente do padrão (1) com HTTP 400.
+        # Para modelos como gpt-4o/gpt-4.1, dá para fixar, por exemplo, OPENAI_TEMPERATURE=0.2.
+        temperature: ${OPENAI_TEMPERATURE:}
+        # Quanto o modelo "pensa" antes de responder: none, low, medium, high ou xhigh.
+        # Medido pela API com o gpt-6-luna e foto de 1024 px: padrão do modelo ~18 s, low 7-10 s, none 2-4 s.
+        # none é o padrão: no modo automático a demora também é risco (com 8 s de atraso a pessoa já
+        # andou ~10 m). Nos testes, none ainda acertou melhor quando a cena não mudou.
+        reasoning-effort: ${OPENAI_REASONING_EFFORT:none}
+
+  jackson:
+    default-property-inclusion: always
+
+  web:
+    error:
+      # Mensagens de exceção nunca vão para o cliente (o TratadorErros monta as respostas)
+      include-message: never
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      base-path: /
+      path-mapping:
+        health: health
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: always
+  health:
+    defaults:
+      enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+veai:
+  jwt:
+    segredo: ${JWT_SECRET:troque-este-segredo-local-com-32-caracteres-ou-mais}
+    validade: 8h
+    emissor: ve-ai-api
+  ia:
+    # openai = GPT via Spring AI (gasta créditos) · falso = respostas fixas, sem custo
+    provedor: ${VEAI_IA_PROVEDOR:falso}
+    modelo: ${OPENAI_MODEL:gpt-6-luna}
+    confianca-minima: 0.7
+    tamanho-maximo-bytes: 5242880
+    # A foto do celular (4000 px ou mais) é reduzida antes de ir para a OpenAI: ~5x menos tokens
+    # (custo) e resposta mais rápida, sem perder o que importa para descrever o caminho.
+    lado-maximo-foto: 1024
+  continuo:
+    # Modo automático: a descrição anterior só serve de referência por este tempo. Depois disso,
+    # a API descreve a cena inteira de novo (reorientação periódica).
+    validade-contexto: 2m
+    # A mesma sugestão de relato (mesmo tipo de barreira) não é repetida neste intervalo
+    janela-sugestao: 2m
+  rag:
+    # Serviço RAG do Pedro (FastAPI). Vazio = desligado.
+    url: ${VEAI_RAG_URL:}
+    timeout: 3s
+  rate-limit:
+    descricoes-por-minuto: ${VEAI_RATE_LIMIT:20}
+  relato:
+    raio-deduplicacao-metros: 30
+    validade-idempotencia: 24h
+  cors:
+    origens: ${VEAI_CORS_ORIGENS:*}
+
+logging:
+  level:
+    "[br.com.fiap.veai]": INFO
+
+---
+# Comum aos perfis com SQL Server (local, azure e test). O schema é o V1 de db/migration/sqlserver,
+# o mesmo DDL de scripts/script-bd.sql.
+spring:
+  config:
+    activate:
+      on-profile: sqlserver
+  datasource:
+    hikari:
+      # Azure SQL Basic (5 DTU) aceita poucas sessões simultâneas: um pool pequeno basta
+      maximum-pool-size: ${DB_POOL_MAX:5}
+  jpa:
+    properties:
+      hibernate:
+        # Textos em NVARCHAR (acentos), como no V1 do SQL Server
+        "[use_nationalized_character_data]": true
+  flyway:
+    # Schema + seed de demonstração (o seed só insere se o banco estiver vazio)
+    locations: classpath:db/migration/{vendor},classpath:db/seed/{vendor}
+
+---
+# Desenvolvimento: SQL Server 2022 + RabbitMQ do docker-compose.yml (docker compose up -d sqlserver rabbitmq)
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: ${LOCAL_DB_URL:jdbc:sqlserver://localhost:1433;databaseName=veai;encrypt=true;trustServerCertificate=true}
+    username: ${LOCAL_DB_USER:sa}
+    password: ${LOCAL_DB_PASSWORD:Veai@Local2026}
+
+---
+# Nuvem: Azure SQL (criado por scripts/01-create-infra.sh) + CloudAMQP. Valores nos App Settings do Web App,
+# gravados pela pipeline de Release a partir do Variable Group (nunca no código).
+spring:
+  config:
+    activate:
+      on-profile: azure
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}

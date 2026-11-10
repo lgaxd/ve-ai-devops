@@ -1,0 +1,93 @@
+# =============================================================================
+# Vê AI · Pipeline de BUILD (CI) · Azure Pipelines
+# Nome da pipeline no Azure DevOps: veai-build
+#
+# Dispara a cada commit na main. Como a main é protegida (só recebe merge por Pull Request
+# aprovado e com work item vinculado), na prática roda depois de cada merge.
+#   1. Java 21 + cache do Maven
+#   2. Confere que scripts/script-bd.sql é idêntico à migração V1 aplicada pelo Flyway
+#   3. mvn clean verify: compila e roda os 66 testes (unitários + integração com SQL Server 2022
+#      e RabbitMQ reais em container, via Testcontainers; o agente Ubuntu já tem Docker)
+#   4. Publica os resultados JUnit (aba Tests) e a cobertura JaCoCo (aba Code Coverage)
+#   5. Publica o artefato "drop": ve-ai-api.jar + scripts de deploy e smoke test
+# Se qualquer teste falhar, a pipeline para e nenhum artefato é publicado (a Release não roda).
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+
+# Pull Requests não disparam esta pipeline: o build só roda depois do merge na main
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
+
+stages:
+  - stage: Build
+    displayName: Build, testes e artefato
+    jobs:
+      - job: Maven
+        displayName: Compilar, testar e empacotar
+        steps:
+          - task: JavaToolInstaller@0
+            displayName: Usar Java 21
+            inputs:
+              versionSpec: '21'
+              jdkArchitectureOption: x64
+              jdkSourceOption: PreInstalled
+
+          - task: Cache@2
+            displayName: Cache das dependências Maven
+            inputs:
+              key: 'maven | "$(Agent.OS)" | pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+              path: $(MAVEN_CACHE_FOLDER)
+
+          - bash: |
+              set -euo pipefail
+              cmp scripts/script-bd.sql src/main/resources/db/migration/sqlserver/V1__schema.sql
+              echo "scripts/script-bd.sql idêntico à migração V1 do Flyway"
+            displayName: Conferir script-bd.sql com a migração V1
+
+          # verify = compile + test (Surefire) + package (ve-ai-api.jar) + relatório JaCoCo
+          - task: Maven@4
+            displayName: Build e testes (mvn clean verify)
+            inputs:
+              mavenPomFile: pom.xml
+              goals: clean verify
+              options: -B -Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+              testRunTitle: Testes JUnit do Vê AI (unitários + integração)
+              # o JavaToolInstaller acima já apontou o JAVA_HOME para o Java 21
+              javaHomeOption: JDKVersion
+              jdkVersionOption: default
+
+          - task: PublishCodeCoverageResults@2
+            displayName: Publicar cobertura (JaCoCo)
+            inputs:
+              summaryFileLocation: target/site/jacoco/jacoco.xml
+              pathToSources: src/main/java
+
+          - task: CopyFiles@2
+            displayName: Separar o JAR e os scripts da Release
+            inputs:
+              Contents: |
+                target/ve-ai-api.jar
+                scripts/lib.sh
+                scripts/app-settings.sh
+                scripts/deploy-app.sh
+                scripts/smoke-test.sh
+              TargetFolder: $(Build.ArtifactStagingDirectory)
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publicar artefato drop
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)
+              artifact: drop

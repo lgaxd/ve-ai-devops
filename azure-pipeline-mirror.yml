@@ -1,0 +1,33 @@
+# =============================================================================
+# Vê AI · espelho automático Azure Repos → GitHub
+# Nome da pipeline no Azure DevOps: veai-mirror-github
+# A cada commit na main, envia o mesmo commit para o GitHub (repositório público de consulta).
+# Requer no Variable Group "veai-devops-secrets": GITHUB_PAT (secreto, permissão Contents: write
+# só no repositório) e GITHUB_REPO (ex.: github.com/lgaxd/ve-ai-devops).
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: veai-devops-secrets
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+    persistCredentials: false
+
+  - bash: |
+      set -euo pipefail
+      git push --force "https://x-access-token:${GITHUB_PAT}@${GITHUB_REPO}.git" HEAD:refs/heads/main
+    displayName: Espelhar a main no GitHub
+    env:
+      GITHUB_PAT: $(GITHUB_PAT)
+      GITHUB_REPO: $(GITHUB_REPO)

@@ -1,0 +1,95 @@
+# =============================================================================
+# Vê AI · Pipeline de RELEASE (CD) · Azure Pipelines
+# Nome da pipeline no Azure DevOps: veai-release
+#
+# Dispara sozinha quando a pipeline de Build (veai-build) termina na main e publica um novo
+# artefato "drop". Não recompila nada: implanta exatamente o JAR que passou nos testes do CI.
+#   Stage Deploy   : grava os App Settings (segredos do Variable Group) e publica o JAR no
+#                    Azure Web App; espera o /health responder UP (API + Azure SQL + RabbitMQ + OpenAI)
+#   Stage SmokeTest: testa a URL pública (health, 401 sem token, login, componentes, leituras)
+# Os recursos (Web App, Azure SQL) foram criados antes por scripts/01-create-infra.sh (Azure CLI).
+# =============================================================================
+
+trigger: none
+pr: none
+
+resources:
+  pipelines:
+    - pipeline: build              # apelido usado nos caminhos $(Pipeline.Workspace)/build/...
+      source: veai-build           # nome da pipeline de Build no Azure DevOps
+      trigger:
+        branches:
+          include:
+            - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # DB_URL, DB_USER, DB_PASSWORD, JWT_SECRET, OPENAI_API_KEY, RABBITMQ_URL, SMOKE_EMAIL, SMOKE_SENHA
+  # (todos secretos). Nada de senha neste arquivo nem no código.
+  - group: veai-devops-secrets
+  - name: AZURE_SERVICE_CONNECTION
+    value: sc-veai-devops
+  - name: RESOURCE_GROUP
+    value: 561413-veai-devops-rg
+  - name: WEB_APP_NAME
+    value: 561413-veai-api
+
+stages:
+  - stage: Deploy
+    displayName: Deploy no Azure Web App
+    jobs:
+      - deployment: DeployJar
+        displayName: Publicar o JAR do CI
+        environment: veai-producao   # ambiente do Azure DevOps: guarda o histórico de deploys
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: build
+                  artifact: drop
+                  displayName: Baixar o artefato do CI
+
+                - task: AzureCLI@2
+                  displayName: App Settings + az webapp deploy + health check
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: bash
+                    scriptLocation: scriptPath
+                    scriptPath: $(Pipeline.Workspace)/build/drop/scripts/deploy-app.sh
+                    arguments: $(Pipeline.Workspace)/build/drop/target/ve-ai-api.jar
+                  env:
+                    # Variáveis secretas precisam ser mapeadas explicitamente para virar variável de ambiente
+                    DB_URL: $(DB_URL)
+                    DB_USER: $(DB_USER)
+                    DB_PASSWORD: $(DB_PASSWORD)
+                    JWT_SECRET: $(JWT_SECRET)
+                    OPENAI_API_KEY: $(OPENAI_API_KEY)
+                    RABBITMQ_URL: $(RABBITMQ_URL)
+                    RESOURCE_GROUP: $(RESOURCE_GROUP)
+                    WEB_APP_NAME: $(WEB_APP_NAME)
+
+  - stage: SmokeTest
+    displayName: Teste da API publicada
+    dependsOn: Deploy
+    jobs:
+      - job: Smoke
+        displayName: Smoke test na URL pública
+        steps:
+          - download: build
+            artifact: drop
+            displayName: Baixar os scripts
+
+          - task: AzureCLI@2
+            displayName: Health, 401, login, componentes e leituras
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: scriptPath
+              scriptPath: $(Pipeline.Workspace)/build/drop/scripts/smoke-test.sh
+            env:
+              SMOKE_EMAIL: $(SMOKE_EMAIL)
+              SMOKE_SENHA: $(SMOKE_SENHA)
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+              WEB_APP_NAME: $(WEB_APP_NAME)

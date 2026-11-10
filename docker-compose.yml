@@ -1,0 +1,96 @@
+# =============================================================================
+# Vê AI · ambiente LOCAL (opcional): API + SQL Server 2022 + RabbitMQ
+# A entrega roda na nuvem (App Service + Azure SQL); este compose só serve para desenvolver e testar.
+#
+#   cp .env.example .env            # opcional: chave da OpenAI e JWT_SECRET
+#   docker compose up -d --build    # 1ª vez: baixa as imagens e compila a API (alguns minutos)
+#   docker compose ps               # aguarde api, sqlserver e rabbitmq "healthy"
+#   Swagger: http://localhost:8080/swagger-ui.html  (ana.souza@veai.dev / Veai@2026)
+#
+# Só a infraestrutura (API pela IDE ou ./mvnw spring-boot:run):
+#   docker compose up -d sqlserver sqlserver-init rabbitmq
+#
+# Parar: docker compose down   ("down -v" apaga também os dados)
+# Senhas fixas de propósito: estes containers só existem na sua máquina.
+# =============================================================================
+name: ve-ai-devops
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile
+    image: ve-ai-api-devops:local
+    depends_on:
+      sqlserver-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    # Prioridade sobre o .env: dentro do compose a API usa sempre o banco e o broker destes containers
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      LOCAL_DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=veai;encrypt=true;trustServerCertificate=true
+      LOCAL_DB_USER: sa
+      LOCAL_DB_PASSWORD: Veai@Local2026
+      RABBITMQ_URL: amqp://veai:veai@rabbitmq:5672
+      PORT: "8080"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: on-failure
+
+  sqlserver:
+    # Mesmo motor do Azure SQL. Só existe para linux/amd64 (em Mac Apple Silicon roda emulado).
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Veai@Local2026
+      MSSQL_PID: Developer
+    ports:
+      - "${SQLSERVER_PORT:-1433}:1433"
+    volumes:
+      - sqlserver-dados:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Veai@Local2026' -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # O SQL Server não cria bancos sozinho: este passo cria o "veai" (o Flyway cria as tabelas ao subir a API)
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "sqlserver", "-U", "sa", "-P", "Veai@Local2026", "-b",
+                 "-Q", "IF DB_ID('veai') IS NULL CREATE DATABASE veai"]
+    restart: "no"
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: veai
+      RABBITMQ_DEFAULT_PASS: veai
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_PAINEL_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-dados:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sqlserver-dados:
+  rabbitmq-dados:
