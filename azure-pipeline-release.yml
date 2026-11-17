@@ -16,6 +16,7 @@ pr: none
 resources:
   pipelines:
     - pipeline: build              # apelido usado nos caminhos $(Pipeline.Workspace)/build/...
+      project: VeAI-DevOps         # projeto da pipeline de Build
       source: veai-build           # nome da pipeline de Build no Azure DevOps
       trigger:
         branches:
