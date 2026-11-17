@@ -136,7 +136,7 @@ scripts/                     Azure CLI (01-create-infra, app-settings, deploy-ap
 dockerfiles/Dockerfile       imagem da API (usada só no docker-compose local)
 docker-compose.yml           ambiente local opcional: API + SQL Server 2022 + RabbitMQ
 database/                    crud-verification.sql (SELECTs do CRUD)
-docs/                        architecture.md, azure-devops.md, roteiro-video.md, img/, openapi.yaml
+docs/                        architecture.md, azure-devops.md, img/, openapi.yaml
 postman/                     coleção e ambientes (local e nuvem)
 src/                         código da API e testes
 .env.azure.example           variáveis da infraestrutura (o .env.azure real não vai para o Git)
@@ -154,6 +154,6 @@ docker compose up -d --build      # API + SQL Server 2022 + RabbitMQ em http://l
 
 Sem chave da OpenAI, a API usa o descritor falso (respostas fixas, sem custo). Para a IA real: `cp .env.example .env` e preencha `VEAI_IA_PROVEDOR=openai` e `OPENAI_API_KEY`.
 
-## 9. Roteiro do vídeo
+## 9. Vídeo
 
-[docs/roteiro-video.md](docs/roteiro-video.md): README e arquitetura → recursos no Portal → Task no Boards → branch e alteração no código → PR e merge → Build e Release automáticos → artefatos e testes → alteração publicada → CRUD de `RELATO` e `DESCRICAO` com SELECT → Task concluída com os links.
+O vídeo (link no topo) percorre: README e arquitetura → recursos no Portal → Task no Boards → branch e alteração no código → PR e merge → Build e Release automáticos → artefatos e testes → alteração publicada → CRUD de `RELATO` e `DESCRICAO` com SELECT → Task concluída com os links.

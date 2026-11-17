@@ -4,7 +4,7 @@
 --
 -- Rodar tudo:      bash scripts/sql.sh -f database/crud-verification.sql
 -- Rodar um bloco:  copie a consulta e use  bash scripts/sql.sh "SELECT ..."
--- O roteiro (docs/roteiro-video.md) diz qual SELECT mostrar depois de cada operação no Swagger.
+-- Depois de cada operação no Swagger, rode o SELECT correspondente (consultas por id no fim do arquivo).
 -- Datas no horário de Brasília (o banco guarda em UTC).
 -- =============================================================================
 SET NOCOUNT ON;

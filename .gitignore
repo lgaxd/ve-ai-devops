@@ -37,3 +37,7 @@ build/
 .env
 .env.azure
 *.log
+# Material de gravação do vídeo (roteiro com as falas, comandos e a alteração da demo): fica só na máquina
+docs/roteiro-video.md
+docs/comandos-video.md
+docs/mudanca-pr.md
