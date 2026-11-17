@@ -25,11 +25,11 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Vê AI · API")
-                        .version("1.0.0")
+                        .version("1.1.0")
                         .description("""
-                                Assistente para pessoas com deficiência visual: descreve o ambiente com IA \
-                                e transforma barreiras de acessibilidade em relatos para a rede de apoio. \
-                                Mesmo contrato nas versões Java e .NET.""")
+                                Assistente para pessoas com deficiência visual: narra o caminho enquanto a pessoa anda \
+                                (modo automático, perigos primeiro) e transforma barreiras de acessibilidade em relatos \
+                                para a rede de apoio. Mesmo contrato nas versões Java e .NET.""")
                         .contact(new Contact().name("Vê AI · FIAP 2TDSPX")))
                 .components(new Components().addSecuritySchemes("bearer", new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")))
