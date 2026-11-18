@@ -9,7 +9,7 @@ A API Java do **Vê AI** entregue por **Azure DevOps** (Boards, Repos e Pipeline
 | Projeto no Azure DevOps | `https://dev.azure.com/RM561469/VeAI-DevOps` |
 | API na nuvem (Swagger) | `https://561413-veai-api.azurewebsites.net/swagger-ui.html` |
 | Espelho no GitHub | `https://github.com/lgaxd/ve-ai-devops` |
-| Vídeo no YouTube | `___` |
+| Vídeo no YouTube | https://www.youtube.com/watch?v=S0OLfrisHKQ |
 
 | Integrante | RM | Turma |
 |---|---:|---|
